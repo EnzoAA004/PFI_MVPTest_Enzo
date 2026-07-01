@@ -9,8 +9,9 @@ import os
 class ServiceSettings:
     """Rutas centralizadas del servicio IA.
 
-    En Colab se asume /content/drive/MyDrive/PFI_MVP.
-    En backend/MVP se puede configurar con la variable PFI_ROOT.
+    En cloud se espera que los modelos finales esten en models/final,
+    configurable con PFI_MODEL_DIR. PFI_ROOT se mantiene para compatibilidad
+    con Colab y para resultados/evidencia externos.
     """
 
     pfi_root: Path
@@ -31,7 +32,7 @@ def get_settings() -> ServiceSettings:
     pfi_root = Path(os.getenv("PFI_ROOT", "/content/drive/MyDrive/PFI_MVP"))
     output_dir = Path(os.getenv("PFI_OUTPUT_DIR", "outputs"))
 
-    models_root = pfi_root / "models"
+    models_root = Path(os.getenv("PFI_MODEL_DIR", "models/final"))
     results_root = pfi_root / "results"
     figures_root = pfi_root / "figures"
     docs_root = pfi_root / "docs"
@@ -43,8 +44,8 @@ def get_settings() -> ServiceSettings:
         figures_root=figures_root,
         docs_root=docs_root,
         output_dir=output_dir,
-        sagittal_model_path=models_root / "E12_sagittal_multiclass_final_best.pt",
-        axial_model_path=models_root / "E10_axial_t2_final_training_clean_best.pt",
+        sagittal_model_path=models_root / "sagittal_spider_multiclass_final_best.pt",
+        axial_model_path=models_root / "axial_t2_alkafri_final_best.pt",
         e13_results_root=results_root / "E13_multiplanar_inference_pipeline",
         e14_results_root=results_root / "E14_ai_agent_orchestrator",
     )

@@ -82,8 +82,8 @@ Respuesta resumida esperada:
     }
   },
   "paths": {
-    "sagittal_model_path": "/content/drive/MyDrive/PFI_MVP/models/E12_sagittal_multiclass_final_best.pt",
-    "axial_model_path": "/content/drive/MyDrive/PFI_MVP/models/E10_axial_t2_final_training_clean_best.pt"
+    "sagittal_model_path": "models/final/sagittal_spider_multiclass_final_best.pt",
+    "axial_model_path": "models/final/axial_t2_alkafri_final_best.pt"
   }
 }
 ```
@@ -136,7 +136,7 @@ smoke_api_contract.py: AI Module contract smoke test passed.
 
 - El pipeline actual valida contrato y trazabilidad tecnica, pero no ejecuta inferencia real sobre imagenes medicas.
 - Los modelos, checkpoints, outputs pesados y datasets deben permanecer fuera del repositorio.
-- Las rutas de modelos apuntan a almacenamiento externo configurable mediante variables de entorno.
+- Las rutas de modelos apuntan por defecto a `models/final` y pueden cambiarse mediante `PFI_MODEL_DIR`.
 - La evidencia no contiene datos medicos reales ni privados.
 
 ## Aclaracion metodologica

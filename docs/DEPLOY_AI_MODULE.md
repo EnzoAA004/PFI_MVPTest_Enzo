@@ -29,6 +29,7 @@ uvicorn pfi_ai_service.api:app --host 0.0.0.0 --port ${PORT:-8000}
 
 ```text
 PORT=8000
+PFI_MODEL_DIR=models/final
 PFI_ROOT=/content/drive/MyDrive/PFI_MVP
 PFI_MODEL_REGISTRY=config/model_registry_final.json
 PFI_DATA_FREEZE_CONFIG=config/data_freeze_config.json
@@ -37,7 +38,7 @@ PFI_OUTPUT_DIR=outputs
 
 Ver tambien `docs/CLOUD_ENVIRONMENT_VARIABLES.md`.
 
-En produccion, `PFI_ROOT` debe apuntar a un volumen, bucket montado o ruta interna donde esten disponibles modelos y artefactos tecnicos autorizados. No incluir datasets completos, imagenes medicas privadas ni checkpoints pesados dentro de la imagen Docker salvo decision explicita del proyecto.
+En produccion, `PFI_MODEL_DIR` debe apuntar a `models/final` o a un volumen/bucket montado con los pesos finales autorizados. `PFI_ROOT` se conserva como fallback Colab y raiz externa para resultados/evidencia. No incluir datasets completos, imagenes medicas privadas ni checkpoints no autorizados dentro de la imagen Docker.
 
 ## Docker local
 
@@ -71,6 +72,7 @@ curl -X POST http://localhost:8000/pipeline/run \
 3. Configurar root/contexto `ai_service` o indicar `ai_service/Dockerfile`, segun la configuracion de Render.
 4. Definir variables de entorno:
    - `PORT`
+   - `PFI_MODEL_DIR`
    - `PFI_ROOT`
    - `PFI_MODEL_REGISTRY`
    - `PFI_DATA_FREEZE_CONFIG`
@@ -105,7 +107,7 @@ Ejemplo conceptual:
 gcloud run deploy pfi-ai-module \
   --image REGION-docker.pkg.dev/PROJECT/REPOSITORY/pfi-ai-module:TAG \
   --region REGION \
-  --set-env-vars PFI_ROOT=/mnt/pfi,PFI_OUTPUT_DIR=outputs \
+  --set-env-vars PFI_MODEL_DIR=models/final,PFI_ROOT=/mnt/pfi,PFI_OUTPUT_DIR=outputs \
   --no-allow-unauthenticated
 ```
 
