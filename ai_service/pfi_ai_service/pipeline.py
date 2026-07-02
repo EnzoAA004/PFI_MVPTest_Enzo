@@ -34,6 +34,202 @@ def _overlay_path_for(run_id: str) -> Optional[str]:
     return None
 
 
+def _contour(series_id: str, slice_index: int, points: list[tuple[float, float]]) -> Dict[str, Any]:
+    return {
+        "seriesId": series_id,
+        "sliceIndex": slice_index,
+        "points": [{"x": x, "y": y} for x, y in points],
+    }
+
+
+def _series_payload(request: PipelineRunRequest, overlay_path: Optional[str]) -> list[Dict[str, Any]]:
+    primary_series = "series-sag-t2" if request.plane == "sagittal" else "series-ax-t2"
+    return [
+        {
+            "id": "series-sag-t2",
+            "name": "Sagittal T2",
+            "plane": "sagittal",
+            "sequence": "T2",
+            "sliceCount": 96,
+            "selectedSlice": 58,
+            "imageUrl": None,
+            "overlayUrl": overlay_path if primary_series == "series-sag-t2" else None,
+            "overlayOpacity": 0.74,
+            "status": "contract_ready",
+        },
+        {
+            "id": "series-sag-t1",
+            "name": "Sagittal T1",
+            "plane": "sagittal",
+            "sequence": "T1",
+            "sliceCount": 96,
+            "selectedSlice": 58,
+            "imageUrl": None,
+            "overlayUrl": None,
+            "overlayOpacity": 0.6,
+            "status": "reference_only",
+        },
+        {
+            "id": "series-ax-t2",
+            "name": "Axial T2 L4-L5",
+            "plane": "axial",
+            "sequence": "T2",
+            "sliceCount": 48,
+            "selectedSlice": 24,
+            "imageUrl": None,
+            "overlayUrl": overlay_path if primary_series == "series-ax-t2" else None,
+            "overlayOpacity": 0.74,
+            "status": "contract_ready",
+        },
+    ]
+
+
+def _masks_payload() -> list[Dict[str, Any]]:
+    return [
+        {
+            "id": "mask-vertebral-body-l4",
+            "label": "Vertebral body L4",
+            "className": "vertebral_body",
+            "color": "#c8b28a",
+            "confidence": 0.86,
+            "editable": True,
+            "enabled": True,
+            "contours": [
+                _contour("series-sag-t2", 58, [(184, 122), (260, 124), (270, 205), (190, 212)]),
+            ],
+        },
+        {
+            "id": "mask-disc-l45",
+            "label": "Intervertebral disc L4-L5",
+            "className": "disc",
+            "color": "#2563eb",
+            "confidence": 0.82,
+            "editable": True,
+            "enabled": True,
+            "contours": [
+                _contour("series-sag-t2", 58, [(178, 214), (272, 208), (285, 236), (181, 244)]),
+                _contour("series-ax-t2", 24, [(190, 165), (246, 158), (275, 205), (220, 238), (176, 212)]),
+            ],
+        },
+        {
+            "id": "mask-canal-l45",
+            "label": "Spinal canal L4-L5",
+            "className": "spinal_canal",
+            "color": "#16a34a",
+            "confidence": 0.79,
+            "editable": True,
+            "enabled": True,
+            "contours": [
+                _contour("series-sag-t2", 58, [(292, 116), (329, 132), (326, 248), (289, 260), (278, 187)]),
+                _contour("series-ax-t2", 24, [(220, 118), (257, 128), (272, 166), (246, 194), (208, 188), (195, 148)]),
+            ],
+        },
+    ]
+
+
+def _landmarks_payload() -> list[Dict[str, Any]]:
+    return [
+        {
+            "id": "lm-l4-superior",
+            "label": "L4 superior endplate",
+            "seriesId": "series-sag-t2",
+            "sliceIndex": 58,
+            "x": 218,
+            "y": 122,
+            "editable": True,
+            "linkedMaskId": "mask-vertebral-body-l4",
+        },
+        {
+            "id": "lm-l4-l5-disc-midpoint",
+            "label": "L4-L5 disc midpoint",
+            "seriesId": "series-sag-t2",
+            "sliceIndex": 58,
+            "x": 231,
+            "y": 226,
+            "editable": True,
+            "linkedMaskId": "mask-disc-l45",
+        },
+        {
+            "id": "lm-canal-ap-l45",
+            "label": "L4-L5 canal AP diameter",
+            "seriesId": "series-sag-t2",
+            "sliceIndex": 58,
+            "x": 306,
+            "y": 190,
+            "editable": True,
+            "linkedMaskId": "mask-canal-l45",
+        },
+    ]
+
+
+def _measurement_values() -> list[Dict[str, Any]]:
+    return [
+        {
+            "id": "disc-height-l45",
+            "label": "Disc height",
+            "level": "L4-L5",
+            "value": 7.8,
+            "aiValue": 7.8,
+            "reviewerValue": None,
+            "unit": "mm",
+            "source": "AI",
+            "confidence": 0.82,
+            "status": "pendiente",
+            "outlier": False,
+            "linkedLandmarks": ["lm-l4-l5-disc-midpoint"],
+        },
+        {
+            "id": "canal-diameter-l45",
+            "label": "Central canal AP diameter",
+            "level": "L4-L5",
+            "value": 14.2,
+            "aiValue": 14.2,
+            "reviewerValue": None,
+            "unit": "mm",
+            "source": "AI",
+            "confidence": 0.76,
+            "status": "pendiente",
+            "outlier": False,
+            "linkedLandmarks": ["lm-canal-ap-l45"],
+        },
+        {
+            "id": "vertebral-body-height-l4",
+            "label": "Vertebral body height",
+            "level": "L4",
+            "value": 28.4,
+            "aiValue": 28.4,
+            "reviewerValue": None,
+            "unit": "mm",
+            "source": "AI",
+            "confidence": 0.86,
+            "status": "pendiente",
+            "outlier": False,
+            "linkedLandmarks": ["lm-l4-superior"],
+        },
+    ]
+
+
+def _measurements_payload() -> Dict[str, Any]:
+    return {
+        "status": "contract_ready",
+        "values": _measurement_values(),
+        "source": "contract_visual_pipeline",
+        "description": "Salida tecnica estable: mediciones derivables, editables y siempre revisables por profesional.",
+    }
+
+
+def _ai_output_payload(agent_decision: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "status": "contract_ready",
+        "label": "Contrato visual listo",
+        "description": "Pipeline preparado con series, masks, landmarks y measurements.values para revisión profesional.",
+        "realInferenceAvailable": False,
+        "humanReviewRequired": HUMAN_REVIEW_REQUIRED,
+        "notClinicalDiagnosis": NOT_CLINICAL_DIAGNOSIS,
+        "agentDecision": agent_decision,
+    }
+
+
 def _as_backend_response(
     *,
     run_id: str,
@@ -42,26 +238,47 @@ def _as_backend_response(
     overlay_path: Optional[str],
     agent_decision: Dict[str, Any],
 ) -> Dict[str, Any]:
+    series = _series_payload(request, overlay_path)
+    masks = _masks_payload()
+    landmarks = _landmarks_payload()
+    ai_output = _ai_output_payload(agent_decision)
     response = {
         "run_id": run_id,
         "runId": run_id,
         "case_id": request.case_id,
         "caseId": request.case_id,
+        "studyId": f"STUDY-{request.case_id.replace('CASE-', '')}",
+        "patientId": request.metadata.get("patientId", "PAT-DEMO-0087"),
+        "studyDate": request.metadata.get("studyDate", "2026-07-01"),
+        "modality": "MRI",
+        "bodyRegion": "Lumbar Spine",
+        "reviewStatus": "pendiente",
         "plane": request.plane,
         "model_key": request.model_key,
         "modelKey": request.model_key,
+        "modelVersion": MODEL_REGISTRY.get(request.model_key, {}).get("version", "contract-v1"),
         "input_path": request.input_path,
         "inputPath": request.input_path,
+        "series": series,
+        "masks": masks,
+        "landmarks": landmarks,
         "measurements": measurements,
+        "measurementValues": measurements["values"],
         "overlay_path": overlay_path,
         "overlayPath": overlay_path,
+        "aiOutput": ai_output,
         "agent_decision": agent_decision,
         "agentDecision": agent_decision,
         "human_review_required": HUMAN_REVIEW_REQUIRED,
         "humanReviewRequired": HUMAN_REVIEW_REQUIRED,
         "not_clinical_diagnosis": NOT_CLINICAL_DIAGNOSIS,
         "notClinicalDiagnosis": NOT_CLINICAL_DIAGNOSIS,
-        "metadata": request.metadata,
+        "metadata": {
+            **request.metadata,
+            "contractMode": "visual_review_v1",
+            "deidentified": True,
+            "diagnosisGenerated": False,
+        },
     }
     return response
 
@@ -76,16 +293,11 @@ def run_pipeline(request: PipelineRunRequest) -> Dict[str, Any]:
 
     run_id = _run_id_for(request)
     overlay_path = _overlay_path_for(run_id)
-    measurements: Dict[str, Any] = {
-        "status": "pending_real_inference",
-        "values": [],
-        "source": "contract_smoke_pipeline",
-        "description": "No se calcularon mediciones clinicas; pendiente conectar inferencia real.",
-    }
+    measurements = _measurements_payload()
     agent_decision = build_agent_decision(
         plane=request.plane,
         model_key=request.model_key,
-        flags=flags or ["contract_smoke_pipeline_requires_review"],
+        flags=flags or ["contract_visual_pipeline_requires_review"],
     )
 
     response = _as_backend_response(
