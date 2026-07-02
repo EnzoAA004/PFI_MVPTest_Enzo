@@ -7,6 +7,7 @@ from typing import Any, Dict, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 from .agent_policy import HUMAN_REVIEW_REQUIRED, NOT_CLINICAL_DIAGNOSIS, build_agent_decision
+from .contract_geometry import build_landmarks_from_masks, build_measurements_from_contract, contract_quality_summary
 from .reporting import write_json
 from .settings import MODEL_REGISTRY, get_settings
 
@@ -32,6 +33,18 @@ def _overlay_path_for(run_id: str) -> Optional[str]:
     if Path(overlay_path).exists():
         return str(overlay_path)
     return None
+
+
+def _requested_inference_mode(request: PipelineRunRequest) -> str:
+    value = request.metadata.get("inferenceMode", request.metadata.get("mode", "contract"))
+    normalized = str(value).strip().lower()
+    return normalized if normalized in {"contract", "mock", "real"} else "contract"
+
+
+def _effective_inference_mode(request: PipelineRunRequest) -> str:
+    # Real inference remains behind the dedicated /inference/* endpoints until model/runtime validation is complete.
+    requested = _requested_inference_mode(request)
+    return "contract" if requested == "real" else requested
 
 
 def _contour(series_id: str, slice_index: int, points: list[tuple[float, float]]) -> Dict[str, Any]:
@@ -127,102 +140,30 @@ def _masks_payload() -> list[Dict[str, Any]]:
     ]
 
 
-def _landmarks_payload() -> list[Dict[str, Any]]:
-    return [
-        {
-            "id": "lm-l4-superior",
-            "label": "L4 superior endplate",
-            "seriesId": "series-sag-t2",
-            "sliceIndex": 58,
-            "x": 218,
-            "y": 122,
-            "editable": True,
-            "linkedMaskId": "mask-vertebral-body-l4",
-        },
-        {
-            "id": "lm-l4-l5-disc-midpoint",
-            "label": "L4-L5 disc midpoint",
-            "seriesId": "series-sag-t2",
-            "sliceIndex": 58,
-            "x": 231,
-            "y": 226,
-            "editable": True,
-            "linkedMaskId": "mask-disc-l45",
-        },
-        {
-            "id": "lm-canal-ap-l45",
-            "label": "L4-L5 canal AP diameter",
-            "seriesId": "series-sag-t2",
-            "sliceIndex": 58,
-            "x": 306,
-            "y": 190,
-            "editable": True,
-            "linkedMaskId": "mask-canal-l45",
-        },
-    ]
+def _landmarks_payload(masks: list[Dict[str, Any]]) -> list[Dict[str, Any]]:
+    return build_landmarks_from_masks(masks)
 
 
-def _measurement_values() -> list[Dict[str, Any]]:
-    return [
-        {
-            "id": "disc-height-l45",
-            "label": "Disc height",
-            "level": "L4-L5",
-            "value": 7.8,
-            "aiValue": 7.8,
-            "reviewerValue": None,
-            "unit": "mm",
-            "source": "AI",
-            "confidence": 0.82,
-            "status": "pendiente",
-            "outlier": False,
-            "linkedLandmarks": ["lm-l4-l5-disc-midpoint"],
-        },
-        {
-            "id": "canal-diameter-l45",
-            "label": "Central canal AP diameter",
-            "level": "L4-L5",
-            "value": 14.2,
-            "aiValue": 14.2,
-            "reviewerValue": None,
-            "unit": "mm",
-            "source": "AI",
-            "confidence": 0.76,
-            "status": "pendiente",
-            "outlier": False,
-            "linkedLandmarks": ["lm-canal-ap-l45"],
-        },
-        {
-            "id": "vertebral-body-height-l4",
-            "label": "Vertebral body height",
-            "level": "L4",
-            "value": 28.4,
-            "aiValue": 28.4,
-            "reviewerValue": None,
-            "unit": "mm",
-            "source": "AI",
-            "confidence": 0.86,
-            "status": "pendiente",
-            "outlier": False,
-            "linkedLandmarks": ["lm-l4-superior"],
-        },
-    ]
+def _measurement_values(masks: list[Dict[str, Any]], landmarks: list[Dict[str, Any]]) -> list[Dict[str, Any]]:
+    return build_measurements_from_contract(masks, landmarks)
 
 
-def _measurements_payload() -> Dict[str, Any]:
+def _measurements_payload(masks: list[Dict[str, Any]], landmarks: list[Dict[str, Any]]) -> Dict[str, Any]:
     return {
         "status": "contract_ready",
-        "values": _measurement_values(),
+        "values": _measurement_values(masks, landmarks),
         "source": "contract_visual_pipeline",
-        "description": "Salida tecnica estable: mediciones derivables, editables y siempre revisables por profesional.",
+        "description": "Salida tecnica estable: mediciones derivadas de contornos, editables y siempre revisables por profesional.",
     }
 
 
-def _ai_output_payload(agent_decision: Dict[str, Any]) -> Dict[str, Any]:
+def _ai_output_payload(agent_decision: Dict[str, Any], inference_mode: str, requested_mode: str) -> Dict[str, Any]:
     return {
         "status": "contract_ready",
         "label": "Contrato visual listo",
-        "description": "Pipeline preparado con series, masks, landmarks y measurements.values para revisión profesional.",
+        "description": "Pipeline preparado con series, masks, landmarks y measurements.values para revision profesional.",
+        "inferenceMode": inference_mode,
+        "requestedInferenceMode": requested_mode,
         "realInferenceAvailable": False,
         "humanReviewRequired": HUMAN_REVIEW_REQUIRED,
         "notClinicalDiagnosis": NOT_CLINICAL_DIAGNOSIS,
@@ -234,14 +175,17 @@ def _as_backend_response(
     *,
     run_id: str,
     request: PipelineRunRequest,
-    measurements: Dict[str, Any],
     overlay_path: Optional[str],
     agent_decision: Dict[str, Any],
 ) -> Dict[str, Any]:
+    requested_mode = _requested_inference_mode(request)
+    inference_mode = _effective_inference_mode(request)
     series = _series_payload(request, overlay_path)
     masks = _masks_payload()
-    landmarks = _landmarks_payload()
-    ai_output = _ai_output_payload(agent_decision)
+    landmarks = _landmarks_payload(masks)
+    measurements = _measurements_payload(masks, landmarks)
+    ai_output = _ai_output_payload(agent_decision, inference_mode, requested_mode)
+    quality = contract_quality_summary(masks, landmarks, measurements["values"])
     response = {
         "run_id": run_id,
         "runId": run_id,
@@ -273,9 +217,13 @@ def _as_backend_response(
         "humanReviewRequired": HUMAN_REVIEW_REQUIRED,
         "not_clinical_diagnosis": NOT_CLINICAL_DIAGNOSIS,
         "notClinicalDiagnosis": NOT_CLINICAL_DIAGNOSIS,
+        "quality": quality,
         "metadata": {
             **request.metadata,
             "contractMode": "visual_review_v1",
+            "inferenceMode": inference_mode,
+            "requestedInferenceMode": requested_mode,
+            "quality": quality,
             "deidentified": True,
             "diagnosisGenerated": False,
         },
@@ -291,9 +239,13 @@ def run_pipeline(request: PipelineRunRequest) -> Dict[str, Any]:
     elif model_info.get("plane") != request.plane:
         flags.append(f"model_plane_mismatch:expected={model_info.get('plane')},received={request.plane}")
 
+    requested_mode = _requested_inference_mode(request)
+    inference_mode = _effective_inference_mode(request)
+    if requested_mode == "real" and inference_mode != "real":
+        flags.append("real_inference_requested_but_contract_mode_used")
+
     run_id = _run_id_for(request)
     overlay_path = _overlay_path_for(run_id)
-    measurements = _measurements_payload()
     agent_decision = build_agent_decision(
         plane=request.plane,
         model_key=request.model_key,
@@ -303,7 +255,6 @@ def run_pipeline(request: PipelineRunRequest) -> Dict[str, Any]:
     response = _as_backend_response(
         run_id=run_id,
         request=request,
-        measurements=measurements,
         overlay_path=overlay_path,
         agent_decision=agent_decision,
     )
